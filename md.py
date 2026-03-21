@@ -12,7 +12,11 @@ from ase import units
 from fairchem.core import pretrained_mlip, FAIRChemCalculator
 
 # --- Settings ---
-INPUT_CIF = [f for f in os.listdir(".") if f.endswith(".cif")][0]
+INPUT = next(
+    (f for f in os.listdir(".") 
+     if f in ["POSCAR"] or f.lower().endswith((".vasp", ".cif", ".xyz"))), 
+    None
+)
 TIME_STEP_FS = 2.0
 LOG_INTERVAL = 50
 
@@ -42,8 +46,8 @@ def run_md_simulation(temperature_k, total_time_ps):
                 print(f"Moved corrupted file to {traj_file}.bak")
 
     if atoms is None:
-        print(f"Loading initial structure from '{INPUT_CIF}'...")
-        atoms = ase_read(INPUT_CIF)
+        print(f"Loading initial structure from '{INPUT}'...")
+        atoms = ase_read(INPUT)
 
     steps_left = total_steps - steps_done
     if steps_left <= 0:
@@ -55,7 +59,7 @@ def run_md_simulation(temperature_k, total_time_ps):
     # ===== FINAL, SIMPLIFIED CODE BLOCK =====
     print("Loading FAIRChem UMA model from local cache...")
     calc = FAIRChemCalculator.from_model_checkpoint(
-    name_or_path="/home/hoang0000/uma/checkpoints/uma-s-1p2.pt",
+    name_or_path="/home/hoang0000/uma/checkpoints/uma-s-1p1.pt",
     task_name="omat",
     device="cuda"
     )
