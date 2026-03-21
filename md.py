@@ -16,14 +16,14 @@ INPUT = next(
     (f for f in os.listdir(".") 
      if f in ["POSCAR"] or f.lower().endswith((".vasp", ".cif", ".xyz"))), 
     None
-)
-TIME_STEP_FS = 2.0
-LOG_INTERVAL = 50
+) # accept .vasp, .cif and .xyz
+TIME_STEP_FS = 2.0 # more accurate but more computational cost with smaller value
+LOG_INTERVAL = 50 # save frame each 50 time steps
 
 def run_md_simulation(temperature_k, total_time_ps):
     total_steps = int(total_time_ps * 1000 / TIME_STEP_FS)
 
-    traj_file = f"md_{temperature_k}K.traj"
+    traj_file = f"md_{temperature_k}K.traj" 
     log_file = f"md_{temperature_k}K.log"
 
     print("--- Simulation Protocol ---")
@@ -59,7 +59,7 @@ def run_md_simulation(temperature_k, total_time_ps):
     # ===== FINAL, SIMPLIFIED CODE BLOCK =====
     print("Loading FAIRChem UMA model from local cache...")
     calc = FAIRChemCalculator.from_model_checkpoint(
-    name_or_path="/home/hoang0000/uma/checkpoints/uma-s-1p1.pt",
+    name_or_path="/home/hoang0000/uma/checkpoints/uma-s-1p2.pt", 
     task_name="omat",
     device="cuda"
     )
