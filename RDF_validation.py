@@ -1,0 +1,130 @@
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from ase.io import read
+from ase.geometry.analysis import Analysis
+from scipy.signal import find_peaks
+import sys
+import os
+import matplotlib
+
+# Force non-interactive backend
+matplotlib.use('Agg')
+
+class RDFValidator:
+    def __init__(self, aimd_path, mlip_path, pairs, last_n_frames=500, r_max=6.0, n_bins=200):
+        self.aimd_path = aimd_path
+        self.mlip_path = mlip_path
+        self.pairs = pairs
+        self.last_n_frames = last_n_frames
+        self.r_max = r_max
+        self.n_bins = n_bins
+        self.results_summary = []
+
+    def _load_and_slice(self, path):
+        if not os.path.exists(path):
+            print(f"WARNING: File not found at {path}")
+            return None
+        try:
+            # Auto-detect format to avoid UnicodeDecodeError
+            traj = read(path, index=":")
+            if not traj: return None
+            start_idx = max(0, len(traj) - self.last_n_frames)
+            return traj[start_idx:]
+        except Exception as e:
+            print(f"ERROR: Could not read {path}: {e}")
+            return None
+
+    def _calculate_rdf(self, traj, pair):
+        if traj is None: return None, None
+        ana = Analysis(traj)
+        rdf_list = ana.get_rdf(rmax=self.r_max, nbins=self.n_bins, elements=pair)
+        rdf_avg = np.mean(rdf_list, axis=0)
+        dr = self.r_max / self.n_bins
+        r = (np.arange(self.n_bins) + 0.5) * dr
+        return r, rdf_avg
+
+    def _get_main_peak(self, r, g_r):
+        if g_r is None: return None, None
+        peaks, _ = find_peaks(g_r, prominence=0.1*np.max(g_r), height=0.2*np.max(g_r))
+        if len(peaks) == 0: return None, None
+        highest_peak_idx = peaks[np.argmax(g_r[peaks])]
+        return r[highest_peak_idx], g_r[highest_peak_idx]
+
+    def run(self, output_prefix="RDF_Analysis"):
+        print(f"--> Initializing Analysis...")
+        traj_aimd = self._load_and_slice(self.aimd_path)
+        traj_mlip = self._load_and_slice(self.mlip_path)
+
+        if traj_mlip is None:
+            print("FATAL ERROR: MLIP trajectory not loaded.")
+            return None
+
+        n_pairs = len(self.pairs)
+        fig, axes = plt.subplots(1, n_pairs, figsize=(6*n_pairs, 5), squeeze=False)
+
+        for i, pair in enumerate(self.pairs):
+            pair_label = f"{pair[0]}-{pair[1]}"
+            r_aimd, g_aimd = self._calculate_rdf(traj_aimd, pair)
+            r_mlip, g_mlip = self._calculate_rdf(traj_mlip, pair)
+
+            r_p_aimd, _ = self._get_main_peak(r_aimd, g_aimd)
+            r_p_mlip, _ = self._get_main_peak(r_mlip, g_mlip)
+            
+            # Simple S calculation
+            overlap_s = np.nan
+            if g_aimd is not None and g_mlip is not None:
+                overlap_s = np.sum(np.minimum(g_aimd, g_mlip)) / np.sum(g_aimd)
+            
+            delta_r = (r_p_mlip - r_p_aimd) if (r_p_aimd and r_p_mlip) else np.nan
+
+            self.results_summary.append({
+                "Pair": pair_label,
+                "AIMD_Peak_r": r_p_aimd,
+                "MLIP_Peak_r": r_p_mlip,
+                "Delta_r": delta_r,
+                "S_Index": overlap_s
+            })
+
+            ax = axes[0, i]
+            if g_aimd is not None:
+                ax.plot(r_aimd, g_aimd, 'k-', lw=2, label='AIMD', alpha=0.7)
+            ax.plot(r_mlip, g_mlip, 'r-', lw=2, label='MLIP', alpha=0.8)
+
+            if g_aimd is not None:
+                info_text = f"dr: {delta_r:.3f} A\nS: {overlap_s:.3f}"
+            else:
+                info_text = "MLIP Only"
+            
+            ax.text(0.55, 0.85, info_text, transform=ax.transAxes, fontsize=10,
+                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
+            ax.set_title(f"Pair: {pair_label}")
+            ax.set_xlabel("Distance r (Angstrom)")
+            ax.set_ylabel("g(r)")
+            ax.legend(loc='upper right')
+            ax.grid(True, alpha=0.2)
+
+        plt.tight_layout()
+        plt.savefig(f"{output_prefix}.png", dpi=300)
+        pd.DataFrame(self.results_summary).to_csv(f"{output_prefix}.csv", index=False)
+        print(f"--> Done! Check {output_prefix}.png and .csv")
+
+if __name__ == "__main__":
+    AIMD_PATH = "/home/hoang0000/uma/NMC_new/train/vasprun.xml" 
+    MLIP_PATH = "/home/hoang0000/uma/NMC_new/train/RDF.traj"
+
+    if len(sys.argv) < 3:
+        sys.exit("Usage: python script.py <n_frames> <pair1> ...")
+
+    try:
+        n_frames = int(sys.argv[1])
+        input_pairs = [tuple(p.split("-")) for p in sys.argv[2:]]
+        validator = RDFValidator(AIMD_PATH, MLIP_PATH, input_pairs, last_n_frames=n_frames, r_max=4.0, n_bins=150)
+        validator.run()
+    except Exception as e:
+        print(f"Error: {e}")
