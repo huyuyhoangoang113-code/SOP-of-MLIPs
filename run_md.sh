@@ -27,7 +27,7 @@ echo "Total simulation time = ${total_time_ps} ps"
 
 for T in "${temps[@]}"; do
   echo "-> Starting MD at ${T}K on GPU 0"
-  python md.py "$T" "$total_time_ps" > logs/${T}.out 2> logs/${T}.err
+  python md.py "$total_time_ps" "$T" > logs/${T}.out 2> logs/${T}.err
   echo "-> Finished MD at ${T}K"
 done
 
